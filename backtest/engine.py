@@ -42,9 +42,10 @@ def factor_long_short_returns(factor: pd.Series, fwd_ret: pd.Series, quantile: f
 
     def _per_day(df: pd.DataFrame) -> float:
         n = len(df)
-        if n < 20:
-            return np.nan
         k = max(1, int(np.floor(n * quantile)))
+        min_required = max(2, 2 * k)
+        if n < min_required:
+            return np.nan
         s = df.sort_values("factor")
         short_r = s.iloc[:k]["fwd_ret"].mean()
         long_r = s.iloc[-k:]["fwd_ret"].mean()

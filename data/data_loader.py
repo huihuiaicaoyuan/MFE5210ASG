@@ -37,6 +37,7 @@ def download_ohlcv(
     end_ak = _to_ak_date(end)
 
     frames = []
+    failed_tickers: list[str] = []
     max_retries = 3
     for t in clean_tickers:
         df_t = None
@@ -76,12 +77,18 @@ def download_ohlcv(
                     df_t = None
 
         if df_t is None or df_t.empty:
+            failed_tickers.append(t)
             continue
         frames.append(df_t)
         time.sleep(0.2)
 
     if not frames:
         raise RuntimeError("Failed to download any ticker data from AkShare.")
+
+    print(f"AkShare download success: {len(frames)} tickers")
+    print(f"AkShare download failed: {len(failed_tickers)} tickers")
+    if failed_tickers:
+        print(f"Failed tickers: {failed_tickers}")
 
     df = pd.concat(frames, ignore_index=True)
     for col in ["open", "high", "low", "close", "adj_close", "volume"]:
