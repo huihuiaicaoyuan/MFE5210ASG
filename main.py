@@ -21,10 +21,16 @@ def main() -> None:
     ]
 
     px = download_ohlcv(universe, start="2016-01-01", end="2026-05-01")
+    if px.empty:
+        print("No price data was downloaded; exiting without backtest outputs.")
+        return
     px.index = px.index.set_names(["date", "asset"])
     factors = compute_factors(px)
     factors.index = factors.index.set_names(["date", "asset"])
     factors_z = zscore_cross_section(factors)
+    if factors_z.empty:
+        print("Factor panel is empty after construction; exiting without backtest outputs.")
+        return
 
     close = px["adj_close"].fillna(px["close"])
     fwd_ret = close.groupby(level=1).pct_change().shift(-1)
@@ -34,6 +40,8 @@ def main() -> None:
     ret_panel = {}
     for col in factors_z.columns:
         ret = factor_long_short_returns(factors_z[col], fwd_ret)
+        if not isinstance(ret, pd.Series):
+            raise TypeError(f"Expected return series for factor '{col}', got {type(ret)}")
         ret_panel[col] = ret
         stats = performance_stats(ret)
         stats["factor"] = col
