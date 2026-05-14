@@ -15,9 +15,8 @@ def main() -> None:
     Path("results").mkdir(exist_ok=True)
 
     universe = [
-        "AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "TSLA", "JPM", "V", "UNH",
-        "HD", "PG", "MA", "XOM", "LLY", "JNJ", "BAC", "AVGO", "KO", "PEP",
-        "COST", "ABBV", "MRK", "WMT", "CVX", "ADBE", "CRM", "NFLX", "AMD", "INTC",
+        "600519", "601318", "600036", "600276", "600900",
+        "601012", "000858", "000333", "002594", "600309",
     ]
 
     px = download_ohlcv(universe, start="2016-01-01", end="2026-05-01")
