@@ -21,11 +21,14 @@ def main() -> None:
     ]
 
     px = download_ohlcv(universe, start="2016-01-01", end="2026-05-01")
+    px.index = px.index.set_names(["date", "asset"])
     factors = compute_factors(px)
+    factors.index = factors.index.set_names(["date", "asset"])
     factors_z = zscore_cross_section(factors)
 
     close = px["adj_close"].fillna(px["close"])
-    fwd_ret = close.groupby(level="ticker").pct_change().shift(-1)
+    fwd_ret = close.groupby(level=1).pct_change().shift(-1)
+    fwd_ret.index = fwd_ret.index.set_names(["date", "asset"])
 
     perf_rows = []
     ret_panel = {}
@@ -40,7 +43,7 @@ def main() -> None:
     cumulative = (1 + factor_returns.fillna(0)).cumprod() - 1
     perf = pd.DataFrame(perf_rows).set_index("factor").sort_values("sharpe_ratio", ascending=False)
 
-    corr = factors_z.groupby(level="date").mean().corr()
+    corr = factors_z.groupby(level=0).mean().corr()
 
     perf.to_csv("results/factor_performance.csv")
     cumulative.to_csv("results/cumulative_returns.csv")

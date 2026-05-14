@@ -17,7 +17,7 @@ def download_ohlcv(
 ) -> pd.DataFrame:
     """Download daily OHLCV data from Yahoo Finance and return a stacked dataframe.
 
-    Returns dataframe indexed by [date, ticker] with columns:
+    Returns dataframe indexed by [date, asset] with columns:
     open, high, low, close, adj_close, volume.
     """
     cache_path = Path(cache_path)
@@ -58,6 +58,7 @@ def download_ohlcv(
     df = pd.concat(frames).reset_index().rename(columns={"Date": "date"})
     df["date"] = pd.to_datetime(df["date"])
     df = df.dropna(subset=["close"]).set_index(["date", "ticker"]).sort_index()
+    df.index = df.index.set_names(["date", "asset"])
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(cache_path)
     return df
