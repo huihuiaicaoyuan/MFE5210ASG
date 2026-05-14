@@ -116,10 +116,15 @@ def main() -> None:
     corr = factors_z.groupby(level=0).mean().corr()
     max_corr = corr.where(~np.eye(len(corr), dtype=bool)).abs().max().max() if len(corr) > 1 else 0.0
     print(f"Max factor correlation (abs): {max_corr:.3f}")
+    avg_sharpe = float(perf["sharpe_ratio"].mean())
+    print(f"Average Sharpe ratio (no cost): {avg_sharpe:.3f}")
 
     perf.to_csv("results/factor_performance.csv")
     cumulative.to_csv("results/cumulative_returns.csv")
     corr.to_csv("results/correlation_matrix.csv")
+    pd.DataFrame(
+        [{"max_abs_correlation": max_corr, "average_sharpe_no_cost": avg_sharpe}]
+    ).to_csv("results/summary_metrics.csv", index=False)
 
     plot_cumulative_returns(cumulative, "results/cumulative_returns.png")
     plot_corr_heatmap(corr, "results/factor_correlation_heatmap.png")

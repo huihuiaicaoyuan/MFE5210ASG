@@ -56,6 +56,7 @@ Generated files in `results/`:
 - `correlation_matrix.csv`
 - `cumulative_returns.png`
 - `factor_correlation_heatmap.png`
+- `summary_metrics.csv` (max correlation and average Sharpe, no cost)
 
 ## Notes
 - BaoStock历史接口在部分网络环境下更稳定；下载器会记录失败股票并继续处理其余股票。
@@ -87,3 +88,7 @@ The script downloads/caches data, computes factors, runs backtests, and writes o
 | max_ret_5d | Lottery effect | close | 过去5日最大单日收益取反 |
 
 > 说明：book_to_market、earnings_surprise、short_interest 需要基本面/卖空数据源，当前OHLCV-only数据管线未包含。
+
+
+## References File
+- See `references/factor_references.md` for factor literature references and submission checklist items.
