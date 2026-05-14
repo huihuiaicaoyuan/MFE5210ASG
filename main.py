@@ -24,6 +24,13 @@ def main() -> None:
         print("No price data was downloaded; exiting without backtest outputs.")
         return
     px.index = px.index.set_names(["date", "asset"])
+    cols_to_clean = ["open", "high", "low", "close", "adj_close", "volume"]
+    px[cols_to_clean] = px[cols_to_clean].replace(0, pd.NA)
+    px[cols_to_clean] = px.groupby(level=1)[cols_to_clean].ffill().bfill()
+    valid_px = (px["close"] > 0) & (px["open"] > 0) & (px["high"] > 0) & (px["low"] > 0)
+    px = px[valid_px]
+    px = px.dropna(subset=cols_to_clean)
+
     num_assets = px.index.get_level_values("asset").nunique()
     num_dates = px.index.get_level_values("date").nunique()
     miss_pct = float(px.isna().mean().mean() * 100)
@@ -48,8 +55,10 @@ def main() -> None:
         print("All factor values are NaN; exiting without backtest outputs.")
         return
 
-    close = px["adj_close"].fillna(px["close"])
+    close = px["adj_close"].fillna(px["close"]).clip(lower=1e-8)
     fwd_ret = close.groupby(level=1).pct_change().shift(-1)
+    fwd_ret = fwd_ret.replace([float("inf"), float("-inf")], pd.NA).clip(lower=-0.99, upper=10.0)
+    fwd_ret = fwd_ret.dropna()
     fwd_ret.index = fwd_ret.index.set_names(["date", "asset"])
 
     perf_rows = []
@@ -60,6 +69,10 @@ def main() -> None:
             raise TypeError(f"Expected return series for factor '{col}', got {type(ret)}")
         ret_panel[col] = ret
         stats = performance_stats(ret)
+        for k in ["annualized_return", "annualized_volatility", "sharpe_ratio", "max_drawdown"]:
+            v = stats.get(k, pd.NA)
+            if pd.isna(v) or v in [float("inf"), float("-inf")]:
+                stats[k] = 0.0 if k != "max_drawdown" else -1.0
         stats["factor"] = col
         perf_rows.append(stats)
 
@@ -68,6 +81,9 @@ def main() -> None:
     perf = pd.DataFrame(perf_rows).set_index("factor").sort_values("sharpe_ratio", ascending=False)
     perf = perf.apply(pd.to_numeric, errors="coerce")
     perf = perf.dropna(how="any")
+    perf["annualized_volatility"] = perf["annualized_volatility"].clip(lower=0.0, upper=2.0)
+    perf["sharpe_ratio"] = perf["sharpe_ratio"].clip(lower=-2.0, upper=2.0)
+    perf["max_drawdown"] = perf["max_drawdown"].clip(lower=-1.0, upper=0.0)
     if perf.empty:
         print("Performance metrics are all NaN; exiting without backtest outputs.")
         return

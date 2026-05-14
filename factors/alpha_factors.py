@@ -16,9 +16,9 @@ def compute_factors(px: pd.DataFrame) -> pd.DataFrame:
     Output indexed identically with factor columns.
     """
     g = _grp(px)
-    close = px["adj_close"].copy().fillna(px["close"])
-    open_ = px["open"]
-    volume = px["volume"].replace(0, np.nan)
+    close = px["adj_close"].copy().fillna(px["close"]).clip(lower=1e-8)
+    open_ = px["open"].clip(lower=1e-8)
+    volume = px["volume"].replace(0, np.nan).clip(lower=1e-8)
     ret1 = g["adj_close"].pct_change().fillna(g["close"].pct_change())
 
     fac = pd.DataFrame(index=px.index)
@@ -26,27 +26,28 @@ def compute_factors(px: pd.DataFrame) -> pd.DataFrame:
     fac["mom_60"] = close.groupby(level=1).pct_change(60)
     fac["reversal_5"] = -close.groupby(level=1).pct_change(5)
     fac["volatility_20"] = -ret1.groupby(level=1).rolling(20).std().droplevel(0)
+    dollar_volume = (close * volume).clip(lower=1e-8)
     fac["dollar_volume_20"] = (
-        (close * volume).groupby(level=1).rolling(20).mean().droplevel(0).pipe(np.log)
+        dollar_volume.groupby(level=1).rolling(20).mean().droplevel(0).clip(lower=1e-8).pipe(np.log)
     )
-    fac["volume_anom"] = (
-        volume.groupby(level=1).rolling(20).mean().droplevel(0)
-        / volume.groupby(level=1).rolling(120).mean().droplevel(0)
-    )
+    vol_20 = volume.groupby(level=1).rolling(20).mean().droplevel(0)
+    vol_120 = volume.groupby(level=1).rolling(120).mean().droplevel(0).replace(0, np.nan)
+    fac["volume_anom"] = vol_20 / vol_120
     ma_20 = close.groupby(level=1).rolling(20).mean().droplevel(0)
-    fac["ma_dist_20"] = (close - ma_20) / ma_20
+    fac["ma_dist_20"] = (close - ma_20) / ma_20.replace(0, np.nan)
 
     delta = g["adj_close"].diff().fillna(g["close"].diff())
     up = delta.clip(lower=0)
     down = (-delta).clip(lower=0)
     rs = (up.groupby(level=1).rolling(14).mean().droplevel(0) /
-          down.groupby(level=1).rolling(14).mean().droplevel(0))
+          down.groupby(level=1).rolling(14).mean().droplevel(0).replace(0, np.nan))
     rsi = 100 - (100 / (1 + rs))
     fac["rsi_14"] = -(rsi - 50) / 50
 
-    fac["overnight"] = (open_ / close.groupby(level=1).shift(1)) - 1
+    fac["overnight"] = (open_ / close.groupby(level=1).shift(1).replace(0, np.nan)) - 1
     fac["turnover_20"] = volume.groupby(level=1).rolling(20).mean().droplevel(0)
-    fac["hl_spread_5"] = -((px["high"] - px["low"]) / close).groupby(level=1).rolling(5).mean().droplevel(0)
+    hl_base = close.replace(0, np.nan)
+    fac["hl_spread_5"] = -((px["high"] - px["low"]) / hl_base).groupby(level=1).rolling(5).mean().droplevel(0)
 
     fac.index = fac.index.set_names(["date", "asset"])
 

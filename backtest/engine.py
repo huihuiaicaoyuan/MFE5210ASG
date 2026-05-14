@@ -64,7 +64,7 @@ def performance_stats(ret: pd.Series) -> dict:
     if not isinstance(ret, pd.Series):
         raise TypeError("performance_stats expects a pandas Series.")
 
-    ret = ret.dropna()
+    ret = ret.replace([np.inf, -np.inf], np.nan).dropna()
     if ret.empty:
         return {
             "annualized_return": np.nan,
@@ -73,11 +73,17 @@ def performance_stats(ret: pd.Series) -> dict:
             "max_drawdown": np.nan,
         }
 
-    ann_ret = float((1 + ret).prod() ** (TRADING_DAYS / len(ret)) - 1)
+    cum = float((1 + ret).prod())
+    if cum <= 0 or np.isnan(cum):
+        ann_ret = np.nan
+    else:
+        ann_ret = float(cum ** (TRADING_DAYS / len(ret)) - 1)
     ann_vol = float(ret.std(ddof=0) * np.sqrt(TRADING_DAYS))
     sharpe = float(ann_ret / ann_vol) if ann_vol > 0 else np.nan
     curve = (1 + ret).cumprod()
-    dd = curve / curve.cummax() - 1
+    running_max = curve.cummax().replace(0, np.nan)
+    dd = (curve - running_max) / running_max
+    dd = dd.clip(lower=-1.0, upper=0.0)
     return {
         "annualized_return": ann_ret,
         "annualized_volatility": ann_vol,
