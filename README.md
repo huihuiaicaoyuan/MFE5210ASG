@@ -1,90 +1,49 @@
-# MFE5210ASG: Diversified Cross-Sectional Alpha Research Framework
+# Alpha 因子回测结果说明（README 补充）
 
-## Project Overview
-This repository implements a professional end-to-end quantitative research workflow for cross-sectional long-short equity investing. The framework downloads real US stock market data, builds diversified alpha factors across multiple signal families, runs robust daily-rebalanced backtests, and exports diagnostics and visualizations for factor evaluation.
+## i. 相关性矩阵（最大相关系数 ≤ 0.5）
+所有因子之间的两两相关系数均小于 0.5。  
+其中最大绝对相关系数为 **0.1129**（出现在 `mom_20` 与 `reversal_5` 之间），远低于作业要求的 0.5 上限，表明因子之间具有较好的分散化效果。
 
-## Data Source
-- **Provider:** Yahoo Finance via `yfinance`
-- **Frequency:** Daily OHLCV
-- **Universe:** 30 large-cap US equities
-- **Period:** 2016-01-01 to 2026-05-01 (configurable in `main.py`)
+- 完整相关性矩阵：`results/correlation_matrix.csv`
+- 相关性热力图：`results/factor_correlation_heatmap.png`
 
-## Project Structure
-```
-MFE5210ASG/
-├── docs/
-├── data/
-│   └── data_loader.py
-├── factors/
-│   └── alpha_factors.py
-├── backtest/
-│   └── engine.py
-├── results/
-│   └── visualization.py
-├── notebooks/
-├── README.md
-├── requirements.txt
-└── main.py
-```
+---
 
-## Factor Methodology
-Implemented 11 diversified factors with distinct economic intuition:
-1. `mom_20`: 1-month momentum (trend persistence)
-2. `mom_60`: 3-month momentum (medium-term trend)
-3. `reversal_5`: short-term mean reversion
-4. `volatility_20`: low-volatility preference
-5. `dollar_volume_20`: liquidity proxy
-6. `volume_anom`: abnormal volume regime detector
-7. `ma_dist_20`: moving-average displacement
-8. `rsi_14`: overbought/oversold oscillator
-9. `overnight`: close-to-open information gap
-10. `turnover_20`: trading activity intensity
-11. `hl_spread_5`: intraday range/turbulence proxy
+## ii. 所有 Alpha 因子的平均夏普比率（无交易成本）
+基于 14 个因子的日度多空收益（每日等权做多前 10% / 做空后 10%），无成本年化夏普比如下：
 
-All factors are transformed cross-sectionally (daily z-score) and used for ranking in long-short construction.
+| 因子 | 夏普比率 |
+|---|---:|
+| intraday_momentum | 2.000 |
+| reversal_5 | 1.760 |
+| overnight | 1.460 |
+| max_ret_5d | 1.378 |
+| ma_dist_20 | 1.135 |
+| mom_20 | 0.602 |
+| rsi_14 | 0.411 |
+| dollar_volume_20 | 0.292 |
+| size_proxy | 0.262 |
+| turnover_20 | 0.202 |
+| volatility_20 | -0.011 |
+| mom_60 | -0.112 |
+| hl_spread_5 | -0.163 |
+| volume_anom | -0.184 |
 
-## Portfolio Construction
-- Daily cross-sectional ranking per factor
-- **Long:** top 10%
-- **Short:** bottom 10%
-- Equal-weight on each side
-- Daily rebalancing
-- Forward return alignment (`t+1`) to avoid look-ahead bias
+- **平均夏普比率（算术平均）= 0.645**
+- 正夏普因子数量：10
+- 负夏普因子数量：4
 
-## Performance Evaluation
-The framework computes for every factor:
-- Sharpe ratio
-- Annualized return
-- Annualized volatility
-- Max drawdown
-- Cumulative return path
+说明：尽管部分因子夏普为负，但在样本期内整体因子池仍具有正向平均预测能力。
 
-Generated output files in `results/`:
-- `factor_performance.csv`
-- `cumulative_returns.csv`
-- `correlation_matrix.csv`
-- `cumulative_returns.png`
-- `factor_correlation_heatmap.png`
+---
 
-## Correlation Control and Diversification
-Factor diversification matters because highly correlated signals often represent the same risk premium and reduce incremental alpha. This project intentionally mixes trend, reversal, volatility, liquidity, and activity-based factors to lower redundancy. Correlation is monitored through `correlation_matrix.csv` and heatmap inspection. The practical target is keeping pairwise relationships moderate (often below 0.5), while recognizing market regimes can temporarily increase co-movement.
-
-## Visualization Examples
-- Multi-factor cumulative return chart
-- Factor correlation heatmap
-
-Both are saved under `results/` and can be reused in reports.
-
-## Limitations
-- Yahoo Finance data quality may vary by ticker/date.
-- Corporate action handling relies on provider-adjusted fields.
-- Transaction costs, slippage, borrow fees, and short constraints are not modeled.
-- Universe is static in this baseline and may introduce survivorship bias.
-
-## How to Run
-```bash
-pip install -r requirements.txt
-python main.py
-```
-
-The script will download/cached data, compute factors, run backtests, and write outputs to `results/`.
+## iii. 其他补充信息
+- 回测期间：`2016-01-01` 至 `2026-05-01`（约 2507 个交易日）
+- 股票池：10 只流动性较好的 A 股（配置于 `main.py`）
+- 因子总数：14 个（动量、反转、波动率、流动性、技术指标等）
+- 组合构建：每日横截面排名，做多得分最高 10%，做空得分最低 10%，等权重再平衡
+- 最佳表现因子：`intraday_momentum`（年化收益 155%，夏普 2.0，最大回撤 -37.9%）
+- 最差表现因子：`volume_anom`（年化收益 -7.2%，夏普 -0.184，最大回撤 -88.5%）
+- 所有因子的最大回撤范围：`-0.886` 至 `-0.341`，无低于 -100% 的异常值
+- 代码结构：模块化设计（`data/`、`factors/`、`backtest/`），`main.py` 一键运行生成结果
+- 依赖库：见 `requirements.txt`（`pandas`、`numpy`、`baostock`、`matplotlib`、`seaborn` 等）
