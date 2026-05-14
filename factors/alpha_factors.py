@@ -49,6 +49,12 @@ def compute_factors(px: pd.DataFrame) -> pd.DataFrame:
     hl_base = close.replace(0, np.nan)
     fac["hl_spread_5"] = -((px["high"] - px["low"]) / hl_base).groupby(level=1).rolling(5).mean().droplevel(0)
 
+    # Additional classic-style factors derivable from OHLCV only.
+    fac["size_proxy"] = -np.log(close.clip(lower=1e-8) * volume.clip(lower=1e-8))
+    fac["intraday_momentum"] = (close / open_.replace(0, np.nan)) - 1
+    daily_ret = close.groupby(level=1).pct_change()
+    fac["max_ret_5d"] = -daily_ret.groupby(level=1).rolling(5).max().droplevel(0)
+
     fac.index = fac.index.set_names(["date", "asset"])
 
     return fac.replace([np.inf, -np.inf], np.nan)

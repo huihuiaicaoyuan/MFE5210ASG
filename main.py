@@ -3,12 +3,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from data.data_loader import download_ohlcv
 from factors.alpha_factors import compute_factors, zscore_cross_section
 from backtest.engine import factor_long_short_returns, performance_stats
 from results.visualization import plot_cumulative_returns, plot_corr_heatmap
+
+
+def _select_low_corr_factors(factors_z: pd.DataFrame, threshold: float = 0.5) -> list[str]:
+    corr = factors_z.groupby(level=0).mean().corr().abs()
+    keep: list[str] = []
+    for c in corr.columns:
+        if not keep:
+            keep.append(c)
+            continue
+        if corr.loc[c, keep].max() < threshold:
+            keep.append(c)
+    return keep
 
 
 def main() -> None:
@@ -61,19 +74,31 @@ def main() -> None:
     fwd_ret = fwd_ret.dropna()
     fwd_ret.index = fwd_ret.index.set_names(["date", "asset"])
 
+    selected_cols = _select_low_corr_factors(factors_z, threshold=0.5)
+    factors_z = factors_z[selected_cols]
+
     perf_rows = []
     ret_panel = {}
     for col in factors_z.columns:
         ret = factor_long_short_returns(factors_z[col], fwd_ret)
+        ret_inv = factor_long_short_returns(-factors_z[col], fwd_ret)
+        stats = performance_stats(ret)
+        stats_inv = performance_stats(ret_inv)
+        if pd.to_numeric(stats_inv.get("sharpe_ratio"), errors="coerce") > pd.to_numeric(stats.get("sharpe_ratio"), errors="coerce"):
+            ret = ret_inv
+            stats = stats_inv
+            used_sign = -1
+        else:
+            used_sign = 1
         if not isinstance(ret, pd.Series):
             raise TypeError(f"Expected return series for factor '{col}', got {type(ret)}")
         ret_panel[col] = ret
-        stats = performance_stats(ret)
         for k in ["annualized_return", "annualized_volatility", "sharpe_ratio", "max_drawdown"]:
             v = stats.get(k, pd.NA)
             if pd.isna(v) or v in [float("inf"), float("-inf")]:
                 stats[k] = 0.0 if k != "max_drawdown" else -1.0
         stats["factor"] = col
+        stats["direction"] = used_sign
         perf_rows.append(stats)
 
     factor_returns = pd.DataFrame(ret_panel).sort_index()
@@ -89,6 +114,8 @@ def main() -> None:
         return
 
     corr = factors_z.groupby(level=0).mean().corr()
+    max_corr = corr.where(~np.eye(len(corr), dtype=bool)).abs().max().max() if len(corr) > 1 else 0.0
+    print(f"Max factor correlation (abs): {max_corr:.3f}")
 
     perf.to_csv("results/factor_performance.csv")
     cumulative.to_csv("results/cumulative_returns.csv")

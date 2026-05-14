@@ -68,3 +68,22 @@ python main.py
 ```
 
 The script downloads/caches data, computes factors, runs backtests, and writes outputs to `results/`.
+
+## Factor Source Table
+| Factor | Type | Data Source Fields | Notes |
+|---|---|---|---|
+| mom_20 / mom_60 | Momentum | close | 20/60日价格动量 |
+| reversal_5 | Reversal | close | 5日反转 |
+| volatility_20 | Volatility | close | 20日波动率（取负） |
+| dollar_volume_20 | Liquidity | close, volume | 20日成交额对数 |
+| volume_anom | Volume regime | volume | 20日/120日成交量比 |
+| ma_dist_20 | Trend distance | close | 相对20日均线偏离 |
+| rsi_14 | Oscillator | close | RSI标准化后取反 |
+| overnight | Gap | open, close | 隔夜跳空收益 |
+| turnover_20 | Activity | volume | 20日均成交量代理 |
+| hl_spread_5 | Intraday range | high, low, close | 5日高低价振幅均值 |
+| size_proxy | Size proxy | close, volume | 市值代理（成交额对数取反） |
+| intraday_momentum | Intraday momentum | open, close | 当日开收到收盘动量 |
+| max_ret_5d | Lottery effect | close | 过去5日最大单日收益取反 |
+
+> 说明：book_to_market、earnings_surprise、short_interest 需要基本面/卖空数据源，当前OHLCV-only数据管线未包含。
