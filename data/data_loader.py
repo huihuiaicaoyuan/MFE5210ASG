@@ -2,25 +2,22 @@
 from __future__ import annotations
 
 from pathlib import Path
-import time
 from typing import Iterable
 
-import akshare as ak
+import baostock as bs
 import pandas as pd
 
 
-def _to_ak_date(date_str: str) -> str:
-    return pd.to_datetime(date_str).strftime("%Y%m%d")
-
-
-def _normalize_symbol(code: str) -> str:
+def _to_bs_symbol(code: str) -> str:
     code = code.strip().lower()
-    if code.startswith(("sh", "sz")):
+    if code.startswith(("sh.", "sz.")):
         return code
+    if code.startswith(("sh", "sz")) and len(code) >= 8:
+        return f"{code[:2]}.{code[2:]}"
     if code.startswith("6"):
-        return f"sh{code}"
+        return f"sh.{code}"
     if code.startswith(("0", "3")):
-        return f"sz{code}"
+        return f"sz.{code}"
     return code
 
 
@@ -31,7 +28,7 @@ def download_ohlcv(
     cache_path: str | Path = "data/ohlcv.parquet",
     refresh: bool = False,
 ) -> pd.DataFrame:
-    """Download daily OHLCV data from AkShare and return a stacked dataframe.
+    """Download daily OHLCV data from BaoStock and return a stacked dataframe.
 
     Returns dataframe indexed by [date, asset] with columns:
     open, high, low, close, adj_close, volume.
@@ -40,106 +37,75 @@ def download_ohlcv(
     if cache_path.exists() and not refresh:
         return pd.read_parquet(cache_path)
 
-    clean_tickers = [_normalize_symbol(str(t)) for t in tickers if str(t).strip()]
+    clean_tickers = [_to_bs_symbol(str(t)) for t in tickers if str(t).strip()]
     if not clean_tickers:
         raise ValueError("No valid tickers provided after cleaning.")
 
-    start_ak = _to_ak_date(start)
-    end_ak = _to_ak_date(end)
+    login_res = bs.login()
+    if login_res.error_code != "0":
+        raise RuntimeError(f"BaoStock login failed: {login_res.error_msg}")
 
     frames = []
     failed_tickers: list[str] = []
     failed_reasons: dict[str, str] = {}
-    max_retries = 3
+
+    fields = "date,open,high,low,close,volume"
     for t in clean_tickers:
-        df_t = None
-        for attempt in range(max_retries):
-            try:
-                raw = ak.stock_zh_a_hist(
-                    symbol=t,
-                    period="daily",
-                    start_date=start_ak,
-                    end_date=end_ak,
-                    adjust="qfq",
-                )
-                if raw is None or raw.empty:
-                    failed_reasons[t] = "stock_zh_a_hist returned empty dataframe"
-                    break
+        try:
+            rs = bs.query_history_k_data_plus(
+                code=t,
+                fields=fields,
+                start_date=start,
+                end_date=end,
+                frequency="d",
+                adjustflag="2",  # forward adjusted
+            )
+            if rs.error_code != "0":
+                failed_tickers.append(t)
+                failed_reasons[t] = f"query error: {rs.error_msg}"
+                continue
 
-                rename_map = {
-                    "日期": "date",
-                    "开盘": "open",
-                    "最高": "high",
-                    "最低": "low",
-                    "收盘": "close",
-                    "成交量": "volume",
-                }
-                if not set(rename_map.keys()).issubset(raw.columns):
-                    failed_reasons[t] = f"missing required columns: {list(raw.columns)[:10]}"
-                    break
+            rows = []
+            while rs.next():
+                rows.append(rs.get_row_data())
+            if not rows:
+                failed_tickers.append(t)
+                failed_reasons[t] = "empty result"
+                continue
 
-                df_t = raw.rename(columns=rename_map)[list(rename_map.values())].copy()
-                df_t["date"] = pd.to_datetime(df_t["date"])
-                df_t["asset"] = t
-                # Use front-adjusted close as both close and adjusted close.
-                df_t["adj_close"] = df_t["close"]
-                break
-            except Exception as e:
-                failed_reasons[t] = f"stock_zh_a_hist error: {type(e).__name__}: {e}"
-                if attempt < max_retries - 1:
-                    time.sleep(1.5 * (attempt + 1))
-                else:
-                    df_t = None
+            df_t = pd.DataFrame(rows, columns=rs.fields)
+            required = ["date", "open", "high", "low", "close", "volume"]
+            if not set(required).issubset(df_t.columns):
+                failed_tickers.append(t)
+                failed_reasons[t] = f"missing columns: {list(df_t.columns)}"
+                continue
 
-        if df_t is None or df_t.empty:
-            # fallback endpoint
-            try:
-                raw_tx = ak.stock_zh_a_hist_tx(symbol=t[-6:], start_date=start_ak, end_date=end_ak)
-                if raw_tx is not None and not raw_tx.empty:
-                    rename_map_tx = {
-                        "date": "date",
-                        "open": "open",
-                        "high": "high",
-                        "low": "low",
-                        "close": "close",
-                        "amount": "volume",
-                    }
-                    if set(rename_map_tx.keys()).issubset(raw_tx.columns):
-                        df_t = raw_tx.rename(columns=rename_map_tx)[list(rename_map_tx.values())].copy()
-                        df_t["date"] = pd.to_datetime(df_t["date"])
-                        df_t["asset"] = t
-                        df_t["adj_close"] = df_t["close"]
-                    else:
-                        failed_reasons[t] = f"stock_zh_a_hist_tx missing columns: {list(raw_tx.columns)[:10]}"
-                else:
-                    failed_reasons[t] = "stock_zh_a_hist_tx returned empty dataframe"
-            except Exception as e:
-                failed_reasons[t] = f"stock_zh_a_hist_tx error: {type(e).__name__}: {e}"
-
-        if df_t is None or df_t.empty:
+            df_t = df_t[required].copy()
+            df_t["date"] = pd.to_datetime(df_t["date"])
+            for col in ["open", "high", "low", "close", "volume"]:
+                df_t[col] = pd.to_numeric(df_t[col], errors="coerce")
+            df_t["asset"] = t
+            df_t["adj_close"] = df_t["close"]
+            frames.append(df_t)
+        except Exception as e:
             failed_tickers.append(t)
-            continue
-        frames.append(df_t)
-        time.sleep(0.2)
+            failed_reasons[t] = f"exception: {type(e).__name__}: {e}"
+
+    bs.logout()
 
     if not frames:
-        raise RuntimeError("Failed to download any ticker data from AkShare.")
+        raise RuntimeError(f"Failed to download any ticker data from BaoStock. failures={failed_reasons}")
 
-    print(f"AkShare download success: {len(frames)} tickers")
-    print(f"AkShare download failed: {len(failed_tickers)} tickers")
+    print(f"BaoStock download success: {len(frames)} tickers")
+    print(f"BaoStock download failed: {len(failed_tickers)} tickers")
     if failed_tickers:
         print(f"Failed tickers: {failed_tickers}")
         for sym in failed_tickers:
             print(f"Failure detail [{sym}]: {failed_reasons.get(sym, 'unknown reason')}")
 
-    if len(frames) < 4:
-        print("Warning: fewer than 4 tickers downloaded successfully. Check failure details above.")
-
     df = pd.concat(frames, ignore_index=True)
-    for col in ["open", "high", "low", "close", "adj_close", "volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
-
-    df = df.dropna(subset=["date", "close"]).set_index(["date", "asset"]).sort_index()
+    df = df.dropna(subset=["date", "open", "high", "low", "close", "volume"])
+    df = df.set_index(["date", "asset"]).sort_index()
     df.index = df.index.set_names(["date", "asset"])
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(cache_path)

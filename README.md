@@ -4,7 +4,7 @@
 This repository implements an end-to-end quantitative research workflow for cross-sectional long-short equity investing. The framework downloads real A-share stock data, builds diversified alpha factors, runs daily-rebalanced backtests, and exports diagnostics and visualizations for factor evaluation.
 
 ## Data Source
-- **Provider:** AkShare (`stock_zh_a_hist`)
+- **Provider:** BaoStock (`query_history_k_data_plus`)
 - **Frequency:** Daily OHLCV
 - **Universe:** 10 large and liquid A-share stocks (configured in `main.py`)
 - **Period:** 2016-01-01 to 2026-05-01 (configurable in `main.py`)
@@ -58,7 +58,7 @@ Generated files in `results/`:
 - `factor_correlation_heatmap.png`
 
 ## Notes
-- AkShare endpoints may occasionally return empty data for some symbols/date ranges; the loader skips failed symbols and continues.
+- BaoStock历史接口在部分网络环境下更稳定；下载器会记录失败股票并继续处理其余股票。
 - Transaction costs, slippage, and shorting constraints are not modeled.
 
 ## How to Run
